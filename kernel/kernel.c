@@ -25,6 +25,8 @@
 #include "keyboard.h"
 #include "process.h"
 #include "scheduler.h"
+#include "idt.h"
+#include "pic.h"
 #include "../include/types.h"
 
 /* ---------------------------------------------------------------------------
@@ -265,6 +267,9 @@ void kernel_main(void) {
     vga_init();
     kb_init();
 
+    idt_init();
+    pic_remap();
+
     process_init();
     scheduler_init();
 
@@ -277,6 +282,5 @@ void kernel_main(void) {
     print_splash();
     shell_run();
 
-    /* Should never reach here */
     __asm__ __volatile__("hlt");
 }
