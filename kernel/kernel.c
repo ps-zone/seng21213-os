@@ -23,6 +23,8 @@
 
 #include "vga.h"
 #include "keyboard.h"
+#include "process.h"
+#include "scheduler.h"
 #include "../include/types.h"
 
 /* ---------------------------------------------------------------------------
@@ -33,6 +35,7 @@ static void cmd_clear(void);
 static void cmd_about(void);
 static void cmd_echo(const char *args);
 static void cmd_mem(void);
+static void cmd_ps(void);
 
 /* ---------------------------------------------------------------------------
  * Utility: minimal string helpers (no libc in a freestanding kernel!)
@@ -159,6 +162,50 @@ static void cmd_mem(void) {
                    VGA_YELLOW, VGA_BLACK);
 }
 
+static void cmd_ps(void) {
+    vga_puts_color("\n  Process List\n",
+                   VGA_LIGHT_CYAN, VGA_BLACK);
+
+    vga_puts("  PID   STATE\n");
+    vga_puts("  ----------------\n");
+
+    uint32_t count = 0;
+
+    for (uint32_t i = 0; i < MAX_PROCESSES; i++) {
+
+        pcb_t *proc = process_get(i);
+
+        if (proc != NULL &&
+            proc->pid != 0 &&
+            proc->state != TERMINATED) {
+
+            vga_printf("  %u     %s\n",
+                       proc->pid,
+                       process_state_name(proc->state));
+
+            count++;
+        }
+    }
+
+    if (count == 0) {
+        vga_puts("  No active processes.\n");
+    }
+
+    vga_printf("\n  Total active processes: %u\n\n", count);
+}
+
+static void test_process_1(void) {
+    while (true) {
+        /* Test process 1 */
+    }
+}
+
+static void test_process_2(void) {
+    while (true) {
+        /* Test process 2 */
+    }
+}
+
 /* ---------------------------------------------------------------------------
  * Shell process
  * --------------------------------------------------------------------------*/
@@ -182,6 +229,11 @@ static void shell_run(void) {
         if (k_strcmp(cmd, "clear") == 0) { cmd_clear(); continue; }
         if (k_strcmp(cmd, "about") == 0) { cmd_about(); continue; }
         if (k_strcmp(cmd, "mem")   == 0) { cmd_mem();   continue; }
+	
+	if (k_strcmp(cmd, "ps") == 0) {
+    	cmd_ps();
+    	continue;
+	}
 
         if (k_strncmp(cmd, "echo ", 5) == 0) {
             cmd_echo(k_ltrim(cmd + 5));
@@ -189,8 +241,7 @@ static void shell_run(void) {
         }
 
         /* Milestone stubs */
-        if (k_strcmp(cmd, "ps")      == 0 ||
-            k_strcmp(cmd, "kill")    == 0 ||
+        if (k_strcmp(cmd, "kill")    == 0 ||
             k_strcmp(cmd, "threads") == 0 ||
             k_strcmp(cmd, "free")    == 0 ||
             k_strcmp(cmd, "ls")      == 0 ||
@@ -213,6 +264,16 @@ static void shell_run(void) {
 void kernel_main(void) {
     vga_init();
     kb_init();
+
+    process_init();
+    scheduler_init();
+
+    pcb_t *process1 = process_create(test_process_1);
+    pcb_t *process2 = process_create(test_process_2);
+
+    scheduler_add_process(process1);
+    scheduler_add_process(process2);
+
     print_splash();
     shell_run();
 
