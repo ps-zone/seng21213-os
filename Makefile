@@ -56,7 +56,8 @@ KERNEL_C_SRCS  := kernel/kernel.c \
                    kernel/scheduler.c \
 		   kernel/idt.c \
 		   kernel/pic.c \
-		   kernel/timer.c
+		   kernel/timer.c \
+		   kernel/thread.c
 
 # Add your new source files below as the course progresses:
 # Lecture 09: kernel/process.c kernel/scheduler.c
