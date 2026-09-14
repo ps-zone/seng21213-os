@@ -37,7 +37,7 @@ static void cmd_help(void);
 static void cmd_clear(void);
 static void cmd_about(void);
 static void cmd_echo(const char *args);
-static void cmd_mem0(void);
+static void cmd_mem(void);
 static void cmd_ps(void);
 static void cmd_ticks(void);
 

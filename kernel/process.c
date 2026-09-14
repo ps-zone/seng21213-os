@@ -25,13 +25,40 @@ pcb_t *process_create(void (*entry)(void)) {
 
             proc->pid = next_pid++;
             proc->state = READY;
-
             proc->eip = (uint32_t)entry;
-
-            proc->esp =
-                (uint32_t)&proc->stack[STACK_SIZE / 4];
-
             proc->next = NULL;
+
+            /*
+             * Build the initial CPU stack frame.
+             *
+             * irq0_handler will eventually do:
+             *
+             *     popad
+             *     iretd
+             *
+             * Therefore the stack must already contain the values
+             * expected by POPAD and IRETD.
+             */
+
+            uint32_t *stack =
+                &proc->stack[STACK_SIZE / sizeof(uint32_t)];
+
+            /* IRETD frame */
+            *(--stack) = 0x202;              /* EFLAGS: IF = 1 */
+            *(--stack) = 0x08;               /* CS */
+            *(--stack) = (uint32_t)entry;    /* EIP */
+
+            /* POPAD frame */
+            *(--stack) = 0;  /* EAX */
+            *(--stack) = 0;  /* ECX */
+            *(--stack) = 0;  /* EDX */
+            *(--stack) = 0;  /* EBX */
+            *(--stack) = 0;  /* Original ESP - ignored by POPAD */
+            *(--stack) = 0;  /* EBP */
+            *(--stack) = 0;  /* ESI */
+            *(--stack) = 0;  /* EDI */
+
+            proc->esp = (uint32_t)stack;
 
             return proc;
         }

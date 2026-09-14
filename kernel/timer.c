@@ -1,5 +1,6 @@
 #include "timer.h"
 #include "io.h"
+#include "scheduler.h"
 #include "pic.h"
 
 #define PIT_CHANNEL0 0x40
@@ -29,4 +30,25 @@ void timer_handler(void) {
 
     /* Tell the PIC that IRQ0 has been handled */
     pic_send_eoi(0);
+}
+
+uint32_t timer_interrupt(uint32_t current_esp) {
+    timer_ticks++;
+
+    /* Tell PIC that IRQ0 has been handled */
+    pic_send_eoi(0);
+
+    /*
+     * While the scheduler is disabled,
+     * continue using the current stack.
+     */
+    if (!scheduler_is_running()) {
+        return current_esp;
+    }
+
+    /*
+     * Scheduler is active:
+     * save the old ESP and return the next process ESP.
+     */
+    return scheduler_switch(current_esp);
 }
