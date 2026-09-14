@@ -40,6 +40,7 @@ static void cmd_echo(const char *args);
 static void cmd_mem(void);
 static void cmd_ps(void);
 static void cmd_ticks(void);
+static void cmd_run(void);
 
 /* ---------------------------------------------------------------------------
  * Utility: minimal string helpers (no libc in a freestanding kernel!)
@@ -202,15 +203,44 @@ static void cmd_ticks(void) {
     vga_printf("\n  Timer ticks: %u\n\n", timer_get_ticks());
 }
 
-static void test_process_1(void) {
+static void cmd_run(void) {
+    vga_puts("\n  Starting round-robin scheduler...\n");
+    vga_puts("  Process 1 and Process 2 will now execute.\n\n");
+
+    scheduler_start();
+
+    /*
+     * The next timer interrupt will switch
+     * from the shell to Process 1.
+     */
     while (true) {
-        /* Test process 1 */
+        __asm__ __volatile__("hlt");
+    }
+}
+
+static void test_process_1(void) {
+    uint32_t last_tick = 0;
+
+    while (true) {
+        uint32_t now = timer_get_ticks();
+
+        if (now - last_tick >= 50) {
+            vga_puts_color("P1 ", VGA_LIGHT_GREEN, VGA_BLACK);
+            last_tick = now;
+        }
     }
 }
 
 static void test_process_2(void) {
+    uint32_t last_tick = 0;
+
     while (true) {
-        /* Test process 2 */
+        uint32_t now = timer_get_ticks();
+
+        if (now - last_tick >= 50) {
+            vga_puts_color("P2 ", VGA_LIGHT_CYAN, VGA_BLACK);
+            last_tick = now;
+        }
     }
 }
 
@@ -247,6 +277,12 @@ static void shell_run(void) {
 	cmd_ticks();
 	continue;
 	}
+
+	if (k_strcmp(cmd, "run") == 0) {
+	cmd_run();
+	continue;
+	}
+
 
         if (k_strncmp(cmd, "echo ", 5) == 0) {
             cmd_echo(k_ltrim(cmd + 5));
