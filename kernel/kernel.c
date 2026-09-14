@@ -117,20 +117,32 @@ static void print_splash(void) {
  * Shell command implementations
  * --------------------------------------------------------------------------*/
 static void cmd_help(void) {
-    vga_puts_color("\n  SENG21213-OS Shell Commands\n", VGA_YELLOW, VGA_BLACK);
-    vga_puts("  ─────────────────────────────────────────────\n");
-    vga_puts("  help    – Show this help message\n");
-    vga_puts("  clear   – Clear the screen\n");
-    vga_puts("  about   – About this OS and course\n");
-    vga_puts("  echo    – Echo text to screen\n");
-    vga_puts("  mem     – Memory map (stub)\n");
-    vga_puts_color("\n  Milestones (to implement):\n", VGA_LIGHT_CYAN, VGA_BLACK);
-    vga_puts("  ps      – [L09] List processes\n");
-    vga_puts("  kill    – [L09] Terminate a process\n");
-    vga_puts("  threads – [L10] List kernel threads\n");
-    vga_puts("  free    – [L11] Show free memory\n");
-    vga_puts("  ls      – [L12] List files\n");
-    vga_puts("  cat     – [L12] Print file contents\n\n");
+    vga_puts_color("\n  SENG21213-OS Shell Commands\n",
+                   VGA_YELLOW, VGA_BLACK);
+
+    vga_puts("----------------------------------------\n");
+
+    vga_puts("  help    - Show this help message\n");
+    vga_puts("  clear   - Clear the screen\n");
+    vga_puts("  about   - About this OS and course\n");
+    vga_puts("  echo    - Echo text to screen\n");
+    vga_puts("  mem     - Memory map (stub)\n");
+
+    vga_puts_color("\n  Process Management:\n",
+                   VGA_LIGHT_CYAN, VGA_BLACK);
+
+    vga_puts("  ps      - List active processes\n");
+    vga_puts("  ticks   - Show timer tick count\n");
+    vga_puts("  run     - Start round-robin scheduler\n");
+
+    vga_puts_color("\n  Future Milestones:\n",
+                   VGA_LIGHT_CYAN, VGA_BLACK);
+
+    vga_puts("  kill    - [L09] Terminate a process\n");
+    vga_puts("  threads - [L10] List kernel threads\n");
+    vga_puts("  free    - [L11] Show free memory\n");
+    vga_puts("  ls      - [L12] List files\n");
+    vga_puts("  cat     - [L12] Print file contents\n\n");
 }
 
 static void cmd_clear(void) {
