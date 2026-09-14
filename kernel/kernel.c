@@ -42,6 +42,9 @@ static void cmd_mem(void);
 static void cmd_ps(void);
 static void cmd_ticks(void);
 static void cmd_run(void);
+static void cmd_threadtest(void);
+
+static void test_thread(void *arg);
 
 /* ---------------------------------------------------------------------------
  * Utility: minimal string helpers (no libc in a freestanding kernel!)
@@ -135,6 +138,11 @@ static void cmd_help(void) {
     vga_puts("  ps      - List active processes\n");
     vga_puts("  ticks   - Show timer tick count\n");
     vga_puts("  run     - Start round-robin scheduler\n");
+    
+    vga_puts_color("\n  Thread Management:\n",
+               VGA_LIGHT_CYAN, VGA_BLACK);
+
+    vga_puts("  threadtest - Run Stage 2 thread test\n");
 
     vga_puts_color("\n  Future Milestones:\n",
                    VGA_LIGHT_CYAN, VGA_BLACK);
@@ -231,6 +239,36 @@ static void cmd_run(void) {
     }
 }
 
+static void cmd_threadtest(void) {
+    vga_puts("\n  Creating two kernel threads...\n");
+
+    thread_t *t1 = thread_create(
+        test_thread,
+        "T1 "
+    );
+
+    thread_t *t2 = thread_create(
+        test_thread,
+        "T2 "
+    );
+
+    if (t1 == NULL || t2 == NULL) {
+        vga_puts("  Failed to create threads.\n\n");
+        return;
+    }
+
+    vga_puts("  Threads created successfully.\n");
+    vga_printf("  TID %u -> T1\n", t1->tid);
+    vga_printf("  TID %u -> T2\n", t2->tid);
+    vga_puts("  Starting scheduler...\n\n");
+
+    scheduler_start();
+
+    while (true) {
+        __asm__ __volatile__("hlt");
+    }
+}
+
 static void test_process_1(void) {
     uint32_t last_tick = 0;
 
@@ -253,6 +291,18 @@ static void test_process_2(void) {
         if (now - last_tick >= 50) {
             vga_puts_color("P2 ", VGA_LIGHT_CYAN, VGA_BLACK);
             last_tick = now;
+        }
+    }
+}
+
+static void test_thread(void *arg) {
+    const char *name = (const char *)arg;
+
+    while (true) {
+        vga_puts(name);
+
+        for (volatile uint32_t i = 0; i < 1000000; i++) {
+            /* Small delay */
         }
     }
 }
@@ -293,6 +343,11 @@ static void shell_run(void) {
 
 	if (k_strcmp(cmd, "run") == 0) {
 	cmd_run();
+	continue;
+	}
+
+	if (k_strcmp(cmd, "threadtest") == 0) {
+	cmd_threadtest();
 	continue;
 	}
 
