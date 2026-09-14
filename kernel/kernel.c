@@ -21,6 +21,7 @@
  *   - NEVER call malloc – use the PMM you build in Lecture 11
  * ============================================================================*/
 
+#include "thread.h"
 #include "vga.h"
 #include "keyboard.h"
 #include "process.h"
@@ -335,6 +336,7 @@ void kernel_main(void) {
 
     process_init();
     scheduler_init();
+    thread_init();
 
     pcb_t *process1 = process_create(test_process_1);
     pcb_t *process2 = process_create(test_process_2);

@@ -2,9 +2,9 @@
 #define THREAD_H
 
 #include "../include/types.h"
+#include "process.h"
 
 #define MAX_THREADS 16
-#define THREAD_STACK_SIZE 4096
 
 typedef enum {
     THREAD_READY,
@@ -18,15 +18,18 @@ typedef struct thread {
 
     thread_state_t state;
 
-    uint32_t esp;
-    uint32_t eip;
-
     void (*entry)(void *);
     void *arg;
 
-    uint32_t stack[THREAD_STACK_SIZE / 4];
+    /*
+     * CPU execution context.
+     * We reuse the Stage 1 PCB format so the existing
+     * round-robin scheduler can schedule this thread.
+     */
+    pcb_t context;
 
     struct thread *next;
+
 } thread_t;
 
 void thread_init(void);
