@@ -27,6 +27,7 @@
 #include "scheduler.h"
 #include "idt.h"
 #include "pic.h"
+#include "timer.h"
 #include "../include/types.h"
 
 /* ---------------------------------------------------------------------------
@@ -36,8 +37,9 @@ static void cmd_help(void);
 static void cmd_clear(void);
 static void cmd_about(void);
 static void cmd_echo(const char *args);
-static void cmd_mem(void);
+static void cmd_mem0(void);
 static void cmd_ps(void);
+static void cmd_ticks(void);
 
 /* ---------------------------------------------------------------------------
  * Utility: minimal string helpers (no libc in a freestanding kernel!)
@@ -196,6 +198,10 @@ static void cmd_ps(void) {
     vga_printf("\n  Total active processes: %u\n\n", count);
 }
 
+static void cmd_ticks(void) {
+    vga_printf("\n  Timer ticks: %u\n\n", timer_get_ticks());
+}
+
 static void test_process_1(void) {
     while (true) {
         /* Test process 1 */
@@ -237,6 +243,11 @@ static void shell_run(void) {
     	continue;
 	}
 
+	if (k_strcmp(cmd, "ticks") == 0) {
+	cmd_ticks();
+	continue;
+	}
+
         if (k_strncmp(cmd, "echo ", 5) == 0) {
             cmd_echo(k_ltrim(cmd + 5));
             continue;
@@ -269,6 +280,10 @@ void kernel_main(void) {
 
     idt_init();
     pic_remap();
+    timer_init(100);
+
+    /* Enable hardware interrupts */
+    __asm__ __volatile__("sti");
 
     process_init();
     scheduler_init();
