@@ -33,6 +33,9 @@
 #include "timer.h"
 #include "../include/types.h"
 
+static pcb_t *stage1_process1 = NULL;
+static pcb_t *stage1_process2 = NULL;
+
 #define RACE_ITERATIONS 1000
 
 static volatile int32_t myglobal = 0;
@@ -264,16 +267,17 @@ static void cmd_ticks(void) {
 }
 
 static void cmd_run(void) {
-    pcb_t *process1 = process_create(test_process_1);
-    pcb_t *process2 = process_create(test_process_2);
-
-    if (process1 == NULL || process2 == NULL) {
-        vga_puts("  Failed to create test processes.\n");
+    /*
+     * P1 and P2 were already created during kernel startup.
+     * Now add them to the ready queue and start scheduling.
+     */
+    if (stage1_process1 == NULL || stage1_process2 == NULL) {
+        vga_puts("  Failed to create Stage 1 test processes.\n");
         return;
     }
 
-    scheduler_add_process(process1);
-    scheduler_add_process(process2);
+    scheduler_add_process(stage1_process1);
+    scheduler_add_process(stage1_process2);
 
     vga_puts("\n  Starting Stage 1 process scheduler...\n");
 
@@ -727,6 +731,9 @@ void kernel_main(void) {
     process_init();
     scheduler_init();
     thread_init();
+
+    stage1_process1 = process_create(test_process_1);
+    stage1_process2 = process_create(test_process_2);
 
     /* Enable hardware interrupts */
     __asm__ __volatile__("sti");
