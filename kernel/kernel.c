@@ -22,6 +22,7 @@
  * ============================================================================*/
 
 #include "thread.h"
+#include "mutex.h"
 #include "vga.h"
 #include "keyboard.h"
 #include "process.h"
@@ -30,6 +31,13 @@
 #include "pic.h"
 #include "timer.h"
 #include "../include/types.h"
+
+#define RACE_ITERATIONS 1000
+
+static volatile int32_t myglobal = 0;
+static volatile uint32_t race_done_1 = 0;
+static volatile uint32_t race_done_2 = 0;
+static mutex_t race_mutex;
 
 /* ---------------------------------------------------------------------------
  * Forward declarations of shell commands
@@ -42,9 +50,17 @@ static void cmd_mem(void);
 static void cmd_ps(void);
 static void cmd_ticks(void);
 static void cmd_run(void);
-static void cmd_threadtest(void);
 
+static void cmd_threadtest(void);
 static void test_thread(void *arg);
+
+static void test_process_1(void);
+static void test_process_2(void);
+
+static void cmd_racetest(void);
+static void race_without_mutex(void *arg);
+static void race_with_mutex(void *arg);
+static void race_controller(void *arg);
 
 /* ---------------------------------------------------------------------------
  * Utility: minimal string helpers (no libc in a freestanding kernel!)
@@ -143,6 +159,7 @@ static void cmd_help(void) {
                VGA_LIGHT_CYAN, VGA_BLACK);
 
     vga_puts("  threadtest - Run Stage 2 thread test\n");
+    vga_puts("  racetest   - Run race condition test\n");
 
     vga_puts_color("\n  Future Milestones:\n",
                    VGA_LIGHT_CYAN, VGA_BLACK);
@@ -225,19 +242,26 @@ static void cmd_ticks(void) {
 }
 
 static void cmd_run(void) {
-    vga_puts("\n  Starting round-robin scheduler...\n");
-    vga_puts("  Process 1 and Process 2 will now execute.\n\n");
+    pcb_t *process1 = process_create(test_process_1);
+    pcb_t *process2 = process_create(test_process_2);
+
+    if (process1 == NULL || process2 == NULL) {
+        vga_puts("  Failed to create test processes.\n");
+        return;
+    }
+
+    scheduler_add_process(process1);
+    scheduler_add_process(process2);
+
+    vga_puts("\n  Starting Stage 1 process scheduler...\n");
 
     scheduler_start();
 
-    /*
-     * The next timer interrupt will switch
-     * from the shell to Process 1.
-     */
     while (true) {
         __asm__ __volatile__("hlt");
     }
 }
+
 
 static void cmd_threadtest(void) {
     vga_puts("\n  Creating two kernel threads...\n");
@@ -268,6 +292,35 @@ static void cmd_threadtest(void) {
         __asm__ __volatile__("hlt");
     }
 }
+
+static void cmd_racetest(void) {
+    vga_puts("\n  Stage 2 Race Condition Test\n");
+    vga_puts("  ---------------------------\n");
+
+    myglobal = 0;
+    race_done_1 = 0;
+    race_done_2 = 0;
+
+    vga_puts("\n  Test 1: WITHOUT mutex\n");
+    vga_puts("  Two threads will increment myglobal.\n");
+    vga_puts("  Expected final value: 2000\n\n");
+
+    thread_t *t1 = thread_create(race_without_mutex, (void *)1);
+    thread_t *t2 = thread_create(race_without_mutex, (void *)2);
+    thread_t *controller = thread_create(race_controller, NULL);
+    
+    if (t1 == NULL || t2 == NULL || controller == NULL){
+        vga_puts("  Failed to create race-test threads.\n");
+        return;
+    }
+
+    scheduler_start();
+
+    while (true) {
+        __asm__ __volatile__("hlt");
+    }
+}
+
 
 static void test_process_1(void) {
     uint32_t last_tick = 0;
@@ -307,7 +360,117 @@ static void test_thread(void *arg) {
     }
 }
 
-/* ---------------------------------------------------------------------------
+static void race_without_mutex(void *arg) {
+    uint32_t worker_id = (uint32_t)arg;
+
+    for (uint32_t i = 0; i < RACE_ITERATIONS; i++) {
+
+        int32_t temp = myglobal;
+
+        /*
+         * Give the timer enough opportunity to switch threads
+         * between reading and writing myglobal.
+         */
+        for (volatile uint32_t delay = 0; delay < 50000; delay++) {
+            __asm__ __volatile__("nop");
+        }
+
+        temp++;
+        myglobal = temp;
+    }
+
+    if (worker_id == 1) {
+        race_done_1 = 1;
+    } else {
+        race_done_2 = 1;
+    }
+}
+
+static void race_with_mutex(void *arg) {
+    uint32_t worker_id = (uint32_t)arg;
+
+    for (uint32_t i = 0; i < RACE_ITERATIONS; i++) {
+
+        mutex_lock(&race_mutex);
+
+        int32_t temp = myglobal;
+
+        for (volatile uint32_t delay = 0; delay < 50000; delay++) {
+            __asm__ __volatile__("nop");
+        }
+
+        temp++;
+        myglobal = temp;
+
+        mutex_unlock(&race_mutex);
+    }
+
+    if (worker_id == 1) {
+        race_done_1 = 1;
+    } else {
+        race_done_2 = 1;
+    }
+}
+
+static void race_controller(void *arg) {
+    (void)arg;
+
+    /* Wait for both WITHOUT-mutex workers */
+    while (!race_done_1 || !race_done_2) {
+        __asm__ __volatile__("hlt");
+    }
+
+    vga_puts("\n\n  WITHOUT mutex result\n");
+    vga_puts("  Expected value: 2000\n");
+    vga_printf("  Actual value:   %d\n", myglobal);
+
+    if (myglobal == (RACE_ITERATIONS * 2)) {
+        vga_puts("  Result: No lost updates detected.\n");
+    } else {
+        vga_puts("  Result: RACE CONDITION detected!\n");
+    }
+
+    /* Prepare second test */
+    myglobal = 0;
+    race_done_1 = 0;
+    race_done_2 = 0;
+
+    mutex_init(&race_mutex);
+
+    vga_puts("\n  Test 2: WITH mutex\n");
+    vga_puts("  Two threads will increment myglobal safely.\n");
+    vga_puts("  Expected final value: 2000\n\n");
+
+    thread_t *t1 =
+        thread_create(race_with_mutex, (void *)1);
+
+    thread_t *t2 =
+        thread_create(race_with_mutex, (void *)2);
+
+    if (t1 == NULL || t2 == NULL) {
+        vga_puts("  Failed to create mutex race-test threads.\n");
+        return;
+    }
+
+    /* Wait for both protected workers */
+    while (!race_done_1 || !race_done_2) {
+        __asm__ __volatile__("hlt");
+    }
+
+    vga_puts("\n  WITH mutex result\n");
+    vga_puts("  Expected value: 2000\n");
+    vga_printf("  Actual value:   %d\n", myglobal);
+
+    if (myglobal == (RACE_ITERATIONS * 2)) {
+        vga_puts("  Result: CORRECT - mutex prevented the race condition!\n");
+    } else {
+        vga_puts("  Result: ERROR - incorrect protected result.\n");
+    }
+
+    vga_puts("\n  Stage 2 race demonstration complete.\n");
+}
+
+/*-----------------------------------------------------------------------
  * Shell process
  * --------------------------------------------------------------------------*/
 static char  shell_buf[256];
@@ -351,6 +514,11 @@ static void shell_run(void) {
 	continue;
 	}
 
+	if (k_strcmp(cmd, "racetest") == 0) {
+	cmd_racetest();
+	continue;
+	}
+
 
         if (k_strncmp(cmd, "echo ", 5) == 0) {
             cmd_echo(k_ltrim(cmd + 5));
@@ -378,29 +546,28 @@ static void shell_run(void) {
 /* ---------------------------------------------------------------------------
  * Kernel entry point – called from kernel_entry.asm
  * --------------------------------------------------------------------------*/
+/* -------------------------------------------------------------------------
+ * Kernel entry point – called from kernel_entry.asm
+ * ------------------------------------------------------------------------- */
 void kernel_main(void) {
+    /* Basic hardware initialization */
     vga_init();
     kb_init();
 
+    /* Interrupt and timer initialization */
     idt_init();
     pic_remap();
     timer_init(100);
 
-    /* Enable hardware interrupts */
-    __asm__ __volatile__("sti");
-
+    /* Process, scheduler, and thread initialization */
     process_init();
     scheduler_init();
     thread_init();
 
-    pcb_t *process1 = process_create(test_process_1);
-    pcb_t *process2 = process_create(test_process_2);
+    /* Enable hardware interrupts */
+    __asm__ __volatile__("sti");
 
-    scheduler_add_process(process1);
-    scheduler_add_process(process2);
-
+    /* Show kernel splash screen and start shell */
     print_splash();
     shell_run();
-
-    __asm__ __volatile__("hlt");
 }
