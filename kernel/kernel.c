@@ -23,6 +23,7 @@
 
 #include "thread.h"
 #include "mutex.h"
+#include "semaphore.h"
 #include "vga.h"
 #include "keyboard.h"
 #include "process.h"
@@ -39,6 +40,21 @@ static volatile uint32_t race_done_1 = 0;
 static volatile uint32_t race_done_2 = 0;
 static mutex_t race_mutex;
 
+#define BUFFER_SIZE 5
+#define PRODUCER_ITEMS 10
+
+static int32_t pc_buffer[BUFFER_SIZE];
+static uint32_t pc_in = 0;
+static uint32_t pc_out = 0;
+
+static semaphore_t pc_empty;
+static semaphore_t pc_full;
+static semaphore_t pc_mutex;
+
+static volatile uint32_t producer_done = 0;
+static volatile uint32_t consumer_done = 0;
+static volatile uint32_t pc_error = 0;
+
 /* ---------------------------------------------------------------------------
  * Forward declarations of shell commands
  * --------------------------------------------------------------------------*/
@@ -52,15 +68,20 @@ static void cmd_ticks(void);
 static void cmd_run(void);
 
 static void cmd_threadtest(void);
-static void test_thread(void *arg);
+static void cmd_racetest(void);
+static void cmd_pctest(void);
 
+static void test_thread(void *arg);
 static void test_process_1(void);
 static void test_process_2(void);
 
-static void cmd_racetest(void);
 static void race_without_mutex(void *arg);
 static void race_with_mutex(void *arg);
 static void race_controller(void *arg);
+
+static void producer_thread(void *arg);
+static void consumer_thread(void *arg);
+static void pc_controller(void *arg);
 
 /* ---------------------------------------------------------------------------
  * Utility: minimal string helpers (no libc in a freestanding kernel!)
@@ -154,12 +175,13 @@ static void cmd_help(void) {
     vga_puts("  ps      - List active processes\n");
     vga_puts("  ticks   - Show timer tick count\n");
     vga_puts("  run     - Start round-robin scheduler\n");
-    
+
     vga_puts_color("\n  Thread Management:\n",
                VGA_LIGHT_CYAN, VGA_BLACK);
 
     vga_puts("  threadtest - Run Stage 2 thread test\n");
     vga_puts("  racetest   - Run race condition test\n");
+    vga_puts("  pctest     - Run producer-consumer semaphore test\n");
 
     vga_puts_color("\n  Future Milestones:\n",
                    VGA_LIGHT_CYAN, VGA_BLACK);
@@ -321,6 +343,60 @@ static void cmd_racetest(void) {
     }
 }
 
+static void cmd_pctest(void) {
+    vga_puts("\n  Stage 2 Producer-Consumer Test\n");
+    vga_puts("  ------------------------------\n");
+
+    /* Reset shared buffer state */
+    pc_in = 0;
+    pc_out = 0;
+    producer_done = 0;
+    consumer_done = 0;
+    pc_error = 0;
+
+    for (uint32_t i = 0; i < BUFFER_SIZE; i++) {
+        pc_buffer[i] = 0;
+    }
+
+    /*
+     * Three semaphores:
+     * empty = number of empty buffer slots
+     * full  = number of filled buffer slots
+     * mutex = binary semaphore protecting the buffer
+     */
+    sem_init(&pc_empty, BUFFER_SIZE);
+    sem_init(&pc_full, 0);
+    sem_init(&pc_mutex, 1);
+
+    vga_puts("  Buffer size: 5\n");
+    vga_puts("  Items to produce: 10\n");
+    vga_puts("  Semaphores: empty=5, full=0, mutex=1\n\n");
+
+    thread_t *producer =
+        thread_create(producer_thread, NULL);
+
+    thread_t *consumer =
+        thread_create(consumer_thread, NULL);
+
+    thread_t *controller =
+        thread_create(pc_controller, NULL);
+
+    if (producer == NULL ||
+        consumer == NULL ||
+        controller == NULL) {
+
+        vga_puts("  Failed to create producer-consumer threads.\n");
+        return;
+    }
+
+    vga_puts("  Starting producer and consumer...\n\n");
+
+    scheduler_start();
+
+    while (true) {
+        __asm__ __volatile__("hlt");
+    }
+}
 
 static void test_process_1(void) {
     uint32_t last_tick = 0;
@@ -470,6 +546,90 @@ static void race_controller(void *arg) {
     vga_puts("\n  Stage 2 race demonstration complete.\n");
 }
 
+static void producer_thread(void *arg) {
+    (void)arg;
+
+    for (uint32_t i = 1; i <= PRODUCER_ITEMS; i++) {
+
+        /* Wait until there is an empty buffer slot */
+        sem_wait(&pc_empty);
+
+        /* Lock the buffer */
+        sem_wait(&pc_mutex);
+
+        pc_buffer[pc_in] = (int32_t)i;
+
+        vga_printf("  Producer -> %u\n", i);
+
+        pc_in = (pc_in + 1) % BUFFER_SIZE;
+
+        /* Unlock the buffer */
+        sem_signal(&pc_mutex);
+
+        /* One more filled slot is now available */
+        sem_signal(&pc_full);
+    }
+
+    producer_done = 1;
+}
+
+static void consumer_thread(void *arg) {
+    (void)arg;
+
+    for (uint32_t expected = 1;
+         expected <= PRODUCER_ITEMS;
+         expected++) {
+
+        /* Wait until an item is available */
+        sem_wait(&pc_full);
+
+        /* Lock the buffer */
+        sem_wait(&pc_mutex);
+
+        int32_t item = pc_buffer[pc_out];
+
+        pc_out = (pc_out + 1) % BUFFER_SIZE;
+
+        vga_printf("  Consumer <- %u\n", (uint32_t)item);
+
+        /*
+         * Check that items are consumed
+         * in the correct order.
+         */
+        if (item != (int32_t)expected) {
+            pc_error = 1;
+        }
+
+        /* Unlock the buffer */
+        sem_signal(&pc_mutex);
+
+        /* One more empty slot is now available */
+        sem_signal(&pc_empty);
+    }
+
+    consumer_done = 1;
+}
+
+static void pc_controller(void *arg) {
+    (void)arg;
+
+    /* Wait until both producer and consumer finish */
+    while (!producer_done || !consumer_done) {
+        __asm__ __volatile__("hlt");
+    }
+
+    vga_puts("\n  Producer-Consumer Test Result\n");
+    vga_puts("  -----------------------------\n");
+
+    if (pc_error == 0) {
+        vga_puts("  Result: SUCCESS - buffer completed without corruption!\n");
+    } else {
+        vga_puts("  Result: ERROR - buffer corruption detected!\n");
+    }
+
+    vga_puts("\n  Stage 2 producer-consumer demonstration complete.\n");
+}
+
 /*-----------------------------------------------------------------------
  * Shell process
  * --------------------------------------------------------------------------*/
@@ -519,6 +679,10 @@ static void shell_run(void) {
 	continue;
 	}
 
+	if (k_strcmp(cmd, "pctest") == 0) {
+	cmd_pctest();
+	continue;
+	}
 
         if (k_strncmp(cmd, "echo ", 5) == 0) {
             cmd_echo(k_ltrim(cmd + 5));
