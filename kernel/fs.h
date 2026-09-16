@@ -4,9 +4,10 @@
 #include "../include/types.h"
 
 #define FS_MAX_FILES          32
-#define FS_MAX_FILENAME       32
+#define FS_MAX_FILENAME       28
 #define FS_DIRECT_BLOCKS      8
 #define FS_BLOCK_SIZE         4096
+#define FS_MAX_OPEN_FILES     16
 
 /*
  * Each inode represents one file.
@@ -31,22 +32,24 @@ typedef struct {
 /* Initialise and format the RAM-disk filesystem. */
 void fs_init(void);
 
-/* Create an empty file. */
-int fs_create(const char *name);
-
-/* Delete a file. */
-int fs_delete(const char *name);
-
-/* Write data to a file. */
-int fs_write(const char *name, const char *data);
+/*
+ * POSIX-inspired file interface.
+ */
+int fs_open(const char *name);
+int fs_close(int fd);
+int fs_read_fd(int fd, char *buffer, uint32_t count);
+int fs_write_fd(int fd, const char *buffer, uint32_t count);
+int fs_unlink(const char *name);
 
 /*
- * Read a file.
- * Returns number of bytes read, or -1 on error.
+ * Convenience functions used by the kernel shell.
  */
+int fs_create(const char *name);
+int fs_delete(const char *name);
+int fs_write(const char *name, const char *data);
 int fs_read(const char *name, char *buffer, uint32_t buffer_size);
 
-/* File/directory information for shell commands. */
+/* Directory information used by ls. */
 uint32_t fs_file_count(void);
 const dir_entry_t *fs_get_directory_entry(uint32_t index);
 
