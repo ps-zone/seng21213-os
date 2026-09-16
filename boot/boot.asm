@@ -24,6 +24,9 @@ start:
     ; Save drive number (BIOS stores it in dl)
     mov  [boot_drive], dl
 
+    ; Collect BIOS E820 memory map for Stage 3
+    call detect_memory
+
     ; Print loading banner using BIOS int 0x10
     mov  si, msg_banner
     call print_rm
@@ -111,6 +114,48 @@ print_rm:
     int  0x10
     jmp  print_rm
 .done:
+    ret
+
+; ---------------------------------------------------------------------------
+; Subroutine: detect_memory
+; Collect BIOS E820 memory map for Stage 3
+;
+; Entry count is stored at physical address 0x5000.
+; E820 entries start at physical address 0x5004.
+; Each entry uses 24 bytes.
+; ---------------------------------------------------------------------------
+detect_memory:
+    pusha
+
+    xor  ax, ax
+    mov  es, ax
+
+    mov  di, 0x5004
+    xor  ebx, ebx
+    xor  bp, bp
+
+.e820_loop:
+    mov  eax, 0xE820
+    mov  edx, 0x534D4150
+    mov  ecx, 24
+    mov  dword [es:di + 20], 1
+
+    int  0x15
+    jc   .e820_done
+
+    cmp  eax, 0x534D4150
+    jne  .e820_done
+
+    inc  bp
+    add  di, 24
+
+    test ebx, ebx
+    jnz  .e820_loop
+
+.e820_done:
+    mov  [0x5000], bp
+
+    popa
     ret
 
 ; ---------------------------------------------------------------------------

@@ -24,6 +24,7 @@
 #include "thread.h"
 #include "mutex.h"
 #include "semaphore.h"
+#include "pmm.h"
 #include "vga.h"
 #include "keyboard.h"
 #include "process.h"
@@ -73,6 +74,9 @@ static void cmd_run(void);
 static void cmd_threadtest(void);
 static void cmd_racetest(void);
 static void cmd_pctest(void);
+
+static void cmd_meminfo(void);
+static void cmd_memtest(void);
 
 static void test_thread(void *arg);
 static void test_process_1(void);
@@ -180,18 +184,23 @@ static void cmd_help(void) {
     vga_puts("  run     - Start round-robin scheduler\n");
 
     vga_puts_color("\n  Thread Management:\n",
-               VGA_LIGHT_CYAN, VGA_BLACK);
+                   VGA_LIGHT_CYAN, VGA_BLACK);
 
     vga_puts("  threadtest - Run Stage 2 thread test\n");
     vga_puts("  racetest   - Run race condition test\n");
     vga_puts("  pctest     - Run producer-consumer semaphore test\n");
+
+    vga_puts_color("\n  Memory Management:\n",
+		   VGA_LIGHT_CYAN, VGA_BLACK);
+
+    vga_puts("  meminfo - Show physical memory information\n");
+    vga_puts("  memtest   - Test 100 frame allocations and frees\n");
 
     vga_puts_color("\n  Future Milestones:\n",
                    VGA_LIGHT_CYAN, VGA_BLACK);
 
     vga_puts("  kill    - [L09] Terminate a process\n");
     vga_puts("  threads - [L10] List kernel threads\n");
-    vga_puts("  free    - [L11] Show free memory\n");
     vga_puts("  ls      - [L12] List files\n");
     vga_puts("  cat     - [L12] Print file contents\n\n");
 }
@@ -400,6 +409,87 @@ static void cmd_pctest(void) {
     while (true) {
         __asm__ __volatile__("hlt");
     }
+}
+
+static void cmd_meminfo(void) {
+    uint32_t total = pmm_total_memory();
+    uint32_t used  = pmm_used_memory();
+    uint32_t free  = pmm_free_memory();
+
+    vga_puts("\n  Physical Memory Information\n");
+    vga_puts("  ---------------------------\n");
+
+    vga_printf("  Total memory: %u MB\n",
+               total / (1024 * 1024));
+
+    vga_printf("  Used memory:  %u MB\n",
+               used / (1024 * 1024));
+
+    vga_printf("  Free memory:  %u MB\n",
+               free / (1024 * 1024));
+
+    vga_puts("\n");
+}
+
+static void cmd_memtest(void) {
+    uint32_t frames[100];
+    uint32_t free_before;
+    uint32_t free_after_alloc;
+    uint32_t free_after_free;
+
+    vga_puts("\n  Stage 3 Physical Memory Test\n");
+    vga_puts("  ----------------------------\n");
+
+    free_before = pmm_free_memory();
+
+    vga_puts("  Allocating 100 frames...\n");
+
+    for (uint32_t i = 0; i < 100; i++) {
+        frames[i] = pmm_alloc_frame();
+
+        if (frames[i] == 0) {
+            vga_printf("  ERROR: Allocation failed at frame %u\n", i);
+
+            /*
+             * Release frames that were already allocated.
+             */
+            for (uint32_t j = 0; j < i; j++) {
+                pmm_free_frame(frames[j]);
+            }
+
+            return;
+        }
+    }
+
+    free_after_alloc = pmm_free_memory();
+
+    vga_puts("  100 frames allocated successfully.\n");
+    vga_puts("  Freeing 100 frames...\n");
+
+    for (uint32_t i = 0; i < 100; i++) {
+        pmm_free_frame(frames[i]);
+    }
+
+    free_after_free = pmm_free_memory();
+
+    vga_puts("  100 frames freed successfully.\n\n");
+
+    vga_printf("  Free before:     %u KB\n",
+               free_before / 1024);
+
+    vga_printf("  After allocate:  %u KB\n",
+               free_after_alloc / 1024);
+
+    vga_printf("  After free:      %u KB\n",
+               free_after_free / 1024);
+
+    if (free_before == free_after_free) {
+        vga_puts("\n  Result: SUCCESS - no memory leak detected!\n");
+    } else {
+        vga_puts("\n  Result: ERROR - memory leak detected!\n");
+    }
+
+    vga_puts("\n  Stage 3 memory test complete.\n\n");
 }
 
 static void test_process_1(void) {
@@ -688,6 +778,16 @@ static void shell_run(void) {
 	continue;
 	}
 
+	if (k_strcmp(cmd, "meminfo") == 0) {
+    	cmd_meminfo();
+    	continue;
+	}
+
+	if (k_strcmp(cmd, "memtest") == 0) {
+    	cmd_memtest();
+    	continue;
+	}
+
         if (k_strncmp(cmd, "echo ", 5) == 0) {
             cmd_echo(k_ltrim(cmd + 5));
             continue;
@@ -731,6 +831,7 @@ void kernel_main(void) {
     process_init();
     scheduler_init();
     thread_init();
+    pmm_init();
 
     stage1_process1 = process_create(test_process_1);
     stage1_process2 = process_create(test_process_2);
