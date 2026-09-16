@@ -151,6 +151,28 @@ void pmm_init(void) {
         }
     }
 
+   /*
+    * Reserve 4 MB to 5 MB for the Stage 4 RAM disk.
+    */
+   uint32_t ramdisk_first_frame =
+       0x00400000 / PMM_FRAME_SIZE;
+
+   uint32_t ramdisk_last_frame =
+       0x00500000 / PMM_FRAME_SIZE;
+
+   for (uint32_t frame = ramdisk_first_frame;
+        frame < ramdisk_last_frame;
+        frame++) {
+
+       if (!bitmap_test(frame)) {
+           bitmap_set(frame);
+
+           if (total_frames > 0) {
+               total_frames--;
+           }
+       }
+   }
+
     /*
      * At this point total_frames represents usable,
      * allocatable physical frames.

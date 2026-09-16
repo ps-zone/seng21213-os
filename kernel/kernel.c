@@ -25,6 +25,7 @@
 #include "mutex.h"
 #include "semaphore.h"
 #include "pmm.h"
+#include "fs.h"
 #include "vga.h"
 #include "keyboard.h"
 #include "process.h"
@@ -77,6 +78,12 @@ static void cmd_pctest(void);
 
 static void cmd_meminfo(void);
 static void cmd_memtest(void);
+static void cmd_touch(const char *name);
+static void cmd_ls(void);
+
+static void cmd_write(const char *args);
+static void cmd_cat(const char *name);
+static void cmd_rm(const char *name);
 
 static void test_thread(void *arg);
 static void test_process_1(void);
@@ -176,12 +183,14 @@ static void cmd_help(void) {
     vga_puts("  echo    - Echo text to screen\n");
     vga_puts("  mem     - Memory map (stub)\n");
 
+
     vga_puts_color("\n  Process Management:\n",
                    VGA_LIGHT_CYAN, VGA_BLACK);
 
     vga_puts("  ps      - List active processes\n");
     vga_puts("  ticks   - Show timer tick count\n");
     vga_puts("  run     - Start round-robin scheduler\n");
+
 
     vga_puts_color("\n  Thread Management:\n",
                    VGA_LIGHT_CYAN, VGA_BLACK);
@@ -190,19 +199,29 @@ static void cmd_help(void) {
     vga_puts("  racetest   - Run race condition test\n");
     vga_puts("  pctest     - Run producer-consumer semaphore test\n");
 
+
     vga_puts_color("\n  Memory Management:\n",
 		   VGA_LIGHT_CYAN, VGA_BLACK);
 
     vga_puts("  meminfo - Show physical memory information\n");
     vga_puts("  memtest   - Test 100 frame allocations and frees\n");
 
+
+    vga_puts_color("\n  File System:\n",
+		   VGA_LIGHT_CYAN, VGA_BLACK);
+
+    vga_puts("  ls      - List files\n");
+    vga_puts("  touch   - Create an empty file\n");
+    vga_puts("  write   - Write text to a file\n");
+    vga_puts("  cat     - Print file contents\n");
+    vga_puts("  rm      - Delete a file\n");
+
+
     vga_puts_color("\n  Future Milestones:\n",
                    VGA_LIGHT_CYAN, VGA_BLACK);
 
     vga_puts("  kill    - [L09] Terminate a process\n");
     vga_puts("  threads - [L10] List kernel threads\n");
-    vga_puts("  ls      - [L12] List files\n");
-    vga_puts("  cat     - [L12] Print file contents\n\n");
 }
 
 static void cmd_clear(void) {
@@ -343,7 +362,7 @@ static void cmd_racetest(void) {
     thread_t *t1 = thread_create(race_without_mutex, (void *)1);
     thread_t *t2 = thread_create(race_without_mutex, (void *)2);
     thread_t *controller = thread_create(race_controller, NULL);
-    
+
     if (t1 == NULL || t2 == NULL || controller == NULL){
         vga_puts("  Failed to create race-test threads.\n");
         return;
@@ -724,6 +743,177 @@ static void pc_controller(void *arg) {
     vga_puts("\n  Stage 2 producer-consumer demonstration complete.\n");
 }
 
+/* --------------------------------------------------------------------------
+ * Stage 4 - Create an empty file
+ * -------------------------------------------------------------------------- */
+static void cmd_touch(const char *name) {
+
+    if (name == 0 || k_strlen(name) == 0) {
+        vga_puts("  Usage: touch <filename>\n");
+        return;
+    }
+
+    if (fs_create(name) == 0) {
+        vga_puts("  File created: ");
+        vga_puts(name);
+        vga_puts("\n");
+    } else {
+        vga_puts_color(
+            "  Error: could not create file.\n",
+            VGA_LIGHT_RED,
+            VGA_BLACK
+        );
+    }
+}
+
+
+/* --------------------------------------------------------------------------
+ * Stage 4 - List files
+ * -------------------------------------------------------------------------- */
+static void cmd_ls(void) {
+
+    uint32_t count = fs_file_count();
+
+    if (count == 0) {
+        vga_puts("  No files found.\n");
+        return;
+    }
+
+    vga_puts("\n  Files\n");
+    vga_puts("  ------------------------------\n");
+
+    for (uint32_t i = 0; i < FS_MAX_FILES; i++) {
+
+        const dir_entry_t *entry =
+            fs_get_directory_entry(i);
+
+        if (entry != 0 && entry->used) {
+            vga_puts("  ");
+            vga_puts(entry->name);
+            vga_puts("\n");
+        }
+    }
+
+    vga_puts("\n");
+}
+
+/* --------------------------------------------------------------------------
+ * Stage 4 - Write text to a file
+ * Usage: write <filename> <text>
+ * -------------------------------------------------------------------------- */
+static void cmd_write(const char *args) {
+
+    if (args == 0 || k_strlen(args) == 0) {
+        vga_puts("  Usage: write <filename> <text>\n");
+        return;
+    }
+
+    /*
+     * Find the first space.
+     * Everything before it is the filename.
+     * Everything after it is the text.
+     */
+    uint32_t i = 0;
+
+    while (args[i] != '\0' && args[i] != ' ') {
+        i++;
+    }
+
+    if (args[i] == '\0') {
+        vga_puts("  Usage: write <filename> <text>\n");
+        return;
+    }
+
+    char filename[FS_MAX_FILENAME];
+
+    if (i == 0 || i >= FS_MAX_FILENAME) {
+        vga_puts("  Error: invalid filename.\n");
+        return;
+    }
+
+    for (uint32_t j = 0; j < i; j++) {
+        filename[j] = args[j];
+    }
+
+    filename[i] = '\0';
+
+    const char *text = k_ltrim(args + i + 1);
+
+    if (k_strlen(text) == 0) {
+        vga_puts("  Usage: write <filename> <text>\n");
+        return;
+    }
+
+    if (fs_write(filename, text) == 0) {
+        vga_puts("  File written successfully.\n");
+    } else {
+        vga_puts_color(
+            "  Error: could not write file.\n",
+            VGA_LIGHT_RED,
+            VGA_BLACK
+        );
+    }
+}
+
+
+/* --------------------------------------------------------------------------
+ * Stage 4 - Display file contents
+ * Usage: cat <filename>
+ * -------------------------------------------------------------------------- */
+static void cmd_cat(const char *name) {
+
+    if (name == 0 || k_strlen(name) == 0) {
+        vga_puts("  Usage: cat <filename>\n");
+        return;
+    }
+
+    /*
+     * Shell input is 256 bytes, so this is enough
+     * for text written using the current shell.
+     */
+    char buffer[256];
+
+    int bytes_read =
+        fs_read(name, buffer, sizeof(buffer));
+
+    if (bytes_read < 0) {
+        vga_puts_color(
+            "  Error: file not found or could not be read.\n",
+            VGA_LIGHT_RED,
+            VGA_BLACK
+        );
+        return;
+    }
+
+    vga_puts("  ");
+    vga_puts(buffer);
+    vga_puts("\n");
+}
+
+/* --------------------------------------------------------------------------
+ * Stage 4 - Delete a file
+ * Usage: rm <filename>
+ * -------------------------------------------------------------------------- */
+static void cmd_rm(const char *name) {
+
+    if (name == 0 || k_strlen(name) == 0) {
+        vga_puts("  Usage: rm <filename>\n");
+        return;
+    }
+
+    if (fs_delete(name) == 0) {
+        vga_puts("  File deleted: ");
+        vga_puts(name);
+        vga_puts("\n");
+    } else {
+        vga_puts_color(
+            "  Error: file not found or could not be deleted.\n",
+            VGA_LIGHT_RED,
+            VGA_BLACK
+        );
+    }
+}
+
 /*-----------------------------------------------------------------------
  * Shell process
  * --------------------------------------------------------------------------*/
@@ -747,7 +937,7 @@ static void shell_run(void) {
         if (k_strcmp(cmd, "clear") == 0) { cmd_clear(); continue; }
         if (k_strcmp(cmd, "about") == 0) { cmd_about(); continue; }
         if (k_strcmp(cmd, "mem")   == 0) { cmd_mem();   continue; }
-	
+
 	if (k_strcmp(cmd, "ps") == 0) {
     	cmd_ps();
     	continue;
@@ -793,12 +983,37 @@ static void shell_run(void) {
             continue;
         }
 
+	if (k_strncmp(cmd, "touch ", 6) == 0) {
+    	cmd_touch(k_ltrim(cmd + 6));
+    	continue;
+	}
+
+	if (k_strcmp(cmd, "ls") == 0) {
+    	cmd_ls();
+    	continue;
+	}
+
+	if (k_strncmp(cmd, "write ", 6) == 0) {
+    	cmd_write(k_ltrim(cmd + 6));
+    	continue;
+	}
+
+	if (k_strncmp(cmd, "cat ", 4) == 0) {
+    	cmd_cat(k_ltrim(cmd + 4));
+    	continue;
+	}
+
+	if (k_strncmp(cmd, "rm ", 3) == 0) {
+    	cmd_rm(k_ltrim(cmd + 3));
+    	continue;
+	}
+
+
         /* Milestone stubs */
         if (k_strcmp(cmd, "kill")    == 0 ||
             k_strcmp(cmd, "threads") == 0 ||
-            k_strcmp(cmd, "free")    == 0 ||
-            k_strcmp(cmd, "ls")      == 0 ||
-            k_strcmp(cmd, "cat")     == 0) {
+            k_strcmp(cmd, "free")    == 0 ){
+
             vga_puts_color("  [TODO] This command is not yet implemented.\n",
                            VGA_YELLOW, VGA_BLACK);
             vga_puts("  Implement it as part of your lecture assignment.\n");
@@ -832,6 +1047,7 @@ void kernel_main(void) {
     scheduler_init();
     thread_init();
     pmm_init();
+    fs_init();
 
     stage1_process1 = process_create(test_process_1);
     stage1_process2 = process_create(test_process_2);
