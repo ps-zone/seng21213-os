@@ -1,4 +1,10 @@
 #include "pmm.h"
+/*
+ * Provided by linker.ld.
+ * Marks the first address after the complete kernel image,
+ * including the BSS RAM disk.
+ */
+extern uint8_t __kernel_end;
 
 /*
  * BIOS E820 memory map locations.
@@ -129,14 +135,18 @@ void pmm_init(void) {
         }
     }
 
-    /*
-     * Reserve low physical memory below 1 MB.
+	    /*
+     * Reserve all physical memory occupied by the kernel.
      *
-     * This protects the bootloader, E820 map,
-     * kernel loading area, BIOS data and kernel stack area.
+     * __kernel_end is provided by linker.ld and includes
+     * the kernel code, data, BSS and the Stage 4 RAM disk.
      */
+    uint32_t kernel_end =
+        (uint32_t)&__kernel_end;
+
     uint32_t reserved_frames =
-        0x100000 / PMM_FRAME_SIZE;
+        (kernel_end + PMM_FRAME_SIZE - 1) /
+        PMM_FRAME_SIZE;
 
     for (uint32_t frame = 0;
          frame < reserved_frames;
@@ -151,23 +161,24 @@ void pmm_init(void) {
         }
     }
 
-  /*
-   * Reserve the physical frame directly below 2 MB
-   * for the main kernel stack.
-   *
-   * The bootloader starts ESP at 0x200000, so the stack
-   * grows downward into this 4 KB frame.
-   */
-  uint32_t kernel_stack_frame =
-      (0x00200000 / PMM_FRAME_SIZE) - 1;
+    /*
+     * Reserve the physical frame directly below 2 MB
+     * for the main kernel stack.
+     *
+     * The bootloader starts ESP at 0x200000, so the stack
+     * grows downward into this 4 KB frame.
+     */
+    uint32_t kernel_stack_frame =
+        (0x00200000 / PMM_FRAME_SIZE) - 1;
 
-  if (!bitmap_test(kernel_stack_frame)) {
-      bitmap_set(kernel_stack_frame);
+    if (!bitmap_test(kernel_stack_frame)) {
+        bitmap_set(kernel_stack_frame);
 
-    if (total_frames > 0) {
-        total_frames--;
-      }
-  }
+        if (total_frames > 0) {
+            total_frames--;
+        }
+    }
+
 
     /*
      * At this point total_frames represents usable,

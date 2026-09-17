@@ -34,9 +34,12 @@ SECTIONS
     } :data
 
     .bss : {
-        *(COMMON)
-        *(.bss)
-        *(.bss.*)
+    *(COMMON)
+    *(.bss)
+    *(.bss.*)
+
+       /* Physical end of the kernel, including all BSS data. */
+       __kernel_end = .;
     } :data
 
     /DISCARD/ : {
