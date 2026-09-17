@@ -190,6 +190,7 @@ static void cmd_help(void) {
     vga_puts("  ps      - List active processes\n");
     vga_puts("  ticks   - Show timer tick count\n");
     vga_puts("  run     - Start round-robin scheduler\n");
+    vga_puts("  kill    - Terminate a process by PID: kill <pid>\n");
 
 
     vga_puts_color("\n  Thread Management:\n",
@@ -220,7 +221,6 @@ static void cmd_help(void) {
     vga_puts_color("\n  Future Milestones:\n",
                    VGA_LIGHT_CYAN, VGA_BLACK);
 
-    vga_puts("  kill    - [L09] Terminate a process\n");
     vga_puts("  threads - [L10] List kernel threads\n");
 }
 
@@ -1009,15 +1009,57 @@ static void shell_run(void) {
 	}
 
 
-        /* Milestone stubs */
-        if (k_strcmp(cmd, "kill")    == 0 ||
-            k_strcmp(cmd, "threads") == 0 ||
-            k_strcmp(cmd, "free")    == 0 ){
+    /* Stage 1: terminate a process by PID */
+    if (k_strncmp(cmd, "kill ", 5) == 0) {
 
-            vga_puts_color("  [TODO] This command is not yet implemented.\n",
-                           VGA_YELLOW, VGA_BLACK);
-            vga_puts("  Implement it as part of your lecture assignment.\n");
-            continue;
+        const char *pid_text = k_ltrim(cmd + 5);
+
+        if (pid_text[0] == '\0') {
+        vga_puts_color("Usage: kill <pid>\n",
+                       VGA_YELLOW, VGA_BLACK);
+        continue;
+        }
+
+        uint32_t pid = 0;
+        uint32_t i = 0;
+
+        while (pid_text[i] >= '0' && pid_text[i] <= '9') {
+        pid = (pid * 10) + (uint32_t)(pid_text[i] - '0');
+        i++;
+        }
+
+        if (i == 0 || pid_text[i] != '\0' || pid == 0) {
+        vga_puts_color("Error: invalid PID.\n",
+                       VGA_LIGHT_RED, VGA_BLACK);
+        continue;
+        }
+
+        if (process_kill(pid) == 0) {
+        vga_puts_color("Process terminated successfully.\n",
+                       VGA_LIGHT_GREEN, VGA_BLACK);
+        } else {
+        vga_puts_color("Error: process not found.\n",
+                       VGA_LIGHT_RED, VGA_BLACK);
+        }
+
+        continue;
+    }
+
+    /* Show usage when kill is entered without a PID */
+    if (k_strcmp(cmd, "kill") == 0) {
+        vga_puts_color("Usage: kill <pid>\n",
+                   VGA_YELLOW, VGA_BLACK);
+        continue;
+    }
+
+        /* Remaining milestone stubs */
+        if (k_strcmp(cmd, "threads") == 0 ||
+        k_strcmp(cmd, "free") == 0) {
+
+        vga_puts_color("  [TODO] This command is not yet implemented.\n",
+                   VGA_YELLOW, VGA_BLACK);
+        vga_puts("  Implement it as part of your lecture assignment.\n");
+        continue;
         }
 
         vga_puts_color("  Unknown command: ", VGA_LIGHT_RED, VGA_BLACK);

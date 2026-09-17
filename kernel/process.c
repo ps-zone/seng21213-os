@@ -75,6 +75,28 @@ void process_exit(void) {
     /* Process termination will be added later */
 }
 
+/*
+ * Terminate a process using its PID.
+ *
+ * Returns:
+ *   0  - process terminated successfully
+ *  -1  - PID was not found
+ */
+int process_kill(uint32_t pid) {
+    for (uint32_t i = 0; i < MAX_PROCESSES; i++) {
+
+        if (process_table[i].pid == pid &&
+            process_table[i].state != TERMINATED) {
+
+            process_table[i].state = TERMINATED;
+
+            return 0;
+        }
+    }
+
+    return -1;
+}
+
 pcb_t *process_get(uint32_t index) {
     if (index >= MAX_PROCESSES) {
         return NULL;

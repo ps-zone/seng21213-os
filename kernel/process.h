@@ -33,6 +33,8 @@ void process_yield(void);
 
 void process_exit(void);
 
+int process_kill(uint32_t pid);
+
 void scheduler_tick(void);
 
 pcb_t *process_get(uint32_t index);
