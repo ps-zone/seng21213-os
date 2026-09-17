@@ -81,8 +81,9 @@ init_pm32:
     mov  fs, ax
     mov  gs, ax
 
-    ; Set up a proper kernel stack at 0x90000
-    mov  ebp, 0x90000
+    ; Set up the kernel stack at 0x200000 (2 MB).
+    ; This keeps the stack above the Stage 4 BSS RAM disk.
+    mov  ebp, 0x200000
     mov  esp, ebp
 
     ; Jump to the kernel entry point (loaded at 0x10000)

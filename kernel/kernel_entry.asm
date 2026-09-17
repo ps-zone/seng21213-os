@@ -10,7 +10,7 @@
 [GLOBAL _start]
 
 _start:
-    ; The bootloader already set up segments and a stack at 0x90000.
+    ; The bootloader already set up segments and a stack at 0x200000.
     ; We just call the C kernel main function.
     call kernel_main
 

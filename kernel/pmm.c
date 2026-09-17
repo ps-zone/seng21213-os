@@ -151,27 +151,23 @@ void pmm_init(void) {
         }
     }
 
-   /*
-    * Reserve 4 MB to 5 MB for the Stage 4 RAM disk.
-    */
-   uint32_t ramdisk_first_frame =
-       0x00400000 / PMM_FRAME_SIZE;
+  /*
+   * Reserve the physical frame directly below 2 MB
+   * for the main kernel stack.
+   *
+   * The bootloader starts ESP at 0x200000, so the stack
+   * grows downward into this 4 KB frame.
+   */
+  uint32_t kernel_stack_frame =
+      (0x00200000 / PMM_FRAME_SIZE) - 1;
 
-   uint32_t ramdisk_last_frame =
-       0x00500000 / PMM_FRAME_SIZE;
+  if (!bitmap_test(kernel_stack_frame)) {
+      bitmap_set(kernel_stack_frame);
 
-   for (uint32_t frame = ramdisk_first_frame;
-        frame < ramdisk_last_frame;
-        frame++) {
-
-       if (!bitmap_test(frame)) {
-           bitmap_set(frame);
-
-           if (total_frames > 0) {
-               total_frames--;
-           }
-       }
-   }
+    if (total_frames > 0) {
+        total_frames--;
+      }
+  }
 
     /*
      * At this point total_frames represents usable,

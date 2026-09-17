@@ -3,19 +3,18 @@
 /*
  * Stage 4 RAM Disk
  *
- * The RAM disk uses a fixed physical memory region instead
- * of a large static array inside the kernel BSS.
+ * The RAM disk is a fixed-size 1 MB byte array
+ * stored in the kernel BSS.
  *
- * Start address : 0x00400000 (4 MB)
- * Size          : 1 MB
- * Block size    : 4 KB
- * Blocks        : 256
+ * Size       : 1 MB
+ * Block size : 4 KB
+ * Blocks     : 256
  */
 
-#define RAMDISK_BASE_ADDRESS 0x00400000
-
-static uint8_t *ramdisk =
-    (uint8_t *)RAMDISK_BASE_ADDRESS;
+/*
+ * 1 MB Stage 4 RAM disk stored in the kernel BSS.
+ */
+static uint8_t ramdisk[RAMDISK_SIZE];
 
 
 /*
