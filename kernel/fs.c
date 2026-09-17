@@ -2,6 +2,16 @@
 #include "ramdisk.h"
 
 #define FS_MAGIC             0x53454E47
+
+/*
+ * Stage 4 RAM-disk layout.
+ *
+ * Block 0 = filesystem metadata
+ * Block 1 = flat directory
+ * Block 2 onwards = file data
+ */
+#define FS_METADATA_BLOCK    0
+#define FS_DIRECTORY_BLOCK   1
 #define FS_DATA_START_BLOCK  2
 
 /*
@@ -34,6 +44,107 @@ static dir_entry_t directory[FS_MAX_FILES];
 
 static open_file_t open_files[FS_MAX_OPEN_FILES];
 
+/*
+ * Fixed offsets inside RAM-disk block 0.
+ *
+ * Layout:
+ *   Superblock
+ *   Block allocation bitmap
+ *   Inode allocation bitmap
+ *   Inode table
+ */
+#define FS_SUPERBLOCK_OFFSET    0
+#define FS_BLOCK_BITMAP_OFFSET  \
+    (FS_SUPERBLOCK_OFFSET + sizeof(superblock_t))
+#define FS_INODE_BITMAP_OFFSET  \
+    (FS_BLOCK_BITMAP_OFFSET + sizeof(block_bitmap))
+#define FS_INODE_TABLE_OFFSET   \
+    (FS_INODE_BITMAP_OFFSET + sizeof(inode_bitmap))
+
+/*
+ * Store filesystem metadata in RAM-disk block 0.
+ *
+ * Block 0 contains:
+ *   - superblock
+ *   - block allocation bitmap
+ *   - inode allocation bitmap
+ *   - inode table
+ */
+static int save_metadata(void) {
+    static uint8_t metadata_buffer[FS_BLOCK_SIZE];
+
+    for (uint32_t i = 0; i < FS_BLOCK_SIZE; i++) {
+        metadata_buffer[i] = 0;
+    }
+
+    uint8_t *superblock_source =
+        (uint8_t *)&superblock;
+
+    for (uint32_t i = 0;
+         i < sizeof(superblock);
+         i++) {
+
+        metadata_buffer[FS_SUPERBLOCK_OFFSET + i] =
+            superblock_source[i];
+    }
+
+    for (uint32_t i = 0;
+         i < sizeof(block_bitmap);
+         i++) {
+
+        metadata_buffer[FS_BLOCK_BITMAP_OFFSET + i] =
+            block_bitmap[i];
+    }
+
+    for (uint32_t i = 0;
+         i < sizeof(inode_bitmap);
+         i++) {
+
+        metadata_buffer[FS_INODE_BITMAP_OFFSET + i] =
+            inode_bitmap[i];
+    }
+
+    uint8_t *inode_source =
+        (uint8_t *)inodes;
+
+    for (uint32_t i = 0;
+         i < sizeof(inodes);
+         i++) {
+
+        metadata_buffer[FS_INODE_TABLE_OFFSET + i] =
+            inode_source[i];
+    }
+
+    return ramdisk_write_block(
+        FS_METADATA_BLOCK,
+        metadata_buffer);
+}
+
+/*
+ * Store the flat directory in RAM-disk block 1.
+ */
+static int save_directory(void) {
+    static uint8_t block_buffer[FS_BLOCK_SIZE];
+
+    for (uint32_t i = 0; i < FS_BLOCK_SIZE; i++) {
+        block_buffer[i] = 0;
+    }
+
+    uint8_t *source = (uint8_t *)directory;
+    uint32_t directory_size = sizeof(directory);
+
+    if (directory_size > FS_BLOCK_SIZE) {
+        return -1;
+    }
+
+    for (uint32_t i = 0; i < directory_size; i++) {
+        block_buffer[i] = source[i];
+    }
+
+    return ramdisk_write_block(
+        FS_DIRECTORY_BLOCK,
+        block_buffer);
+}
 
 /* =========================================================
  * Small string helpers
@@ -215,6 +326,18 @@ void fs_init(void) {
         open_files[i].inode_index = 0;
         open_files[i].position = 0;
     }
+
+    /*
+     * Store the initial filesystem metadata
+     * in RAM-disk block 0.
+     */
+    save_metadata();
+
+    /*
+     * Store the initial empty flat directory
+     * in RAM-disk block 1.
+     */
+    save_directory();
 }
 
 
@@ -272,6 +395,30 @@ int fs_create(const char *name) {
 
     directory[directory_index].inode_index =
         (uint32_t)inode_index;
+
+    /*
+     * Persist the updated flat directory
+     * to RAM-disk block 1.
+     */
+    if (save_directory() != 0) {
+        directory[directory_index].used = 0;
+        directory[directory_index].name[0] = '\0';
+        directory[directory_index].inode_index = 0;
+
+        inode->used = 0;
+        inode->size = 0;
+        free_inode((uint32_t)inode_index);
+
+        return -1;
+    }
+
+    /*
+     * Persist the updated superblock, inode bitmap
+     * and inode table to RAM-disk block 0.
+     */
+    if (save_metadata() != 0) {
+        return -1;
+    }
 
     return 0;
 }
@@ -431,8 +578,10 @@ int fs_write_fd(int fd,
             int new_block = allocate_block();
 
             if (new_block < 0) {
-                return written > 0 ?
-                    (int)written : -1;
+                if (written > 0) {
+                    break;
+                }
+                return -1;
             }
 
             inode->blocks[block_index] =
@@ -483,6 +632,15 @@ int fs_write_fd(int fd,
 
     if (open_files[fd].position > inode->size) {
         inode->size = open_files[fd].position;
+    }
+
+    /*
+     * Writing may change the inode size, allocated blocks,
+     * block bitmap and free-block count.
+     * Persist those changes to RAM-disk block 0.
+     */
+    if (save_metadata() != 0) {
+        return -1;
     }
 
     return (int)written;
@@ -537,6 +695,23 @@ int fs_unlink(const char *name) {
     directory[directory_index].used = 0;
     directory[directory_index].name[0] = '\0';
     directory[directory_index].inode_index = 0;
+
+    /*
+     * Persist the updated flat directory
+     * to RAM-disk block 1.
+     */
+    if (save_directory() != 0) {
+        return -1;
+    }
+
+    /*
+     * Persist the updated inode information,
+     * allocation bitmaps and free counts
+     * to RAM-disk block 0.
+     */
+    if (save_metadata() != 0) {
+        return -1;
+    }
 
     return 0;
 }
