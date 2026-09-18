@@ -16,25 +16,18 @@ typedef enum {
 typedef struct pcb {
     uint32_t pid;
     proc_state_t state;
-
     uint32_t esp;
     uint32_t eip;
-
     uint32_t stack[STACK_SIZE / 4];
-
     struct pcb *next;
 } pcb_t;
 
 void process_init(void);
-
 pcb_t *process_create(void (*entry)(void));
-
 void process_yield(void);
-
 void process_exit(void);
-
+int process_kill(uint32_t pid);
 void scheduler_tick(void);
-
 pcb_t *process_get(uint32_t index);
 uint32_t process_count(void);
 const char *process_state_name(proc_state_t state);
