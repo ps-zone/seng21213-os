@@ -1,5 +1,5 @@
 /* =============================================================================
- * SENG21213-OS :: Main Kernel  (Stage 0 – Foundations)
+ * SENG21213-OS :: Main Kernel  (Stage 2 – Threads, Mutex & Semaphore)
  * File   : kernel/kernel.c
  *
  * PURPOSE
@@ -65,8 +65,12 @@ static void cmd_help(void);
 static void cmd_clear(void);
 static void cmd_about(void);
 static void cmd_echo(const char *args);
+static void cmd_version(void);
+static void cmd_colour(const char *args);
+static void cmd_halt(void);
 static void cmd_mem(void);
 static void cmd_ps(void);
+static void cmd_kill(const char *args);
 static void cmd_ticks(void);
 static void cmd_run(void);
 
@@ -125,7 +129,7 @@ static void print_splash(void) {
                    VGA_YELLOW, VGA_BLACK);
 
     vga_set_cursor(2, 2);
-    vga_puts_color("  Stage 0: Kernel Foundations", VGA_LIGHT_CYAN, VGA_BLACK);
+    vga_puts_color("  Stage 2: Threads, Mutex & Semaphore", VGA_LIGHT_CYAN, VGA_BLACK);
 
     vga_set_cursor(3, 2);
     vga_puts_color("  Faculty of Engineering – Department of Software Engineering",
@@ -161,39 +165,25 @@ static void print_splash(void) {
  * Shell command implementations
  * --------------------------------------------------------------------------*/
 static void cmd_help(void) {
-    vga_puts_color("\n  SENG21213-OS Shell Commands\n",
-                   VGA_YELLOW, VGA_BLACK);
-
+    vga_puts_color("\n  SENG21213-OS Shell Commands\n", VGA_YELLOW, VGA_BLACK);
     vga_puts("----------------------------------------\n");
-
-    vga_puts("  help    - Show this help message\n");
-    vga_puts("  clear   - Clear the screen\n");
-    vga_puts("  about   - About this OS and course\n");
-    vga_puts("  echo    - Echo text to screen\n");
-    vga_puts("  mem     - Memory map (stub)\n");
-
-    vga_puts_color("\n  Process Management:\n",
-                   VGA_LIGHT_CYAN, VGA_BLACK);
-
-    vga_puts("  ps      - List active processes\n");
-    vga_puts("  ticks   - Show timer tick count\n");
-    vga_puts("  run     - Start round-robin scheduler\n");
-
-    vga_puts_color("\n  Thread Management:\n",
-               VGA_LIGHT_CYAN, VGA_BLACK);
-
-    vga_puts("  threadtest - Run Stage 2 thread test\n");
-    vga_puts("  racetest   - Run race condition test\n");
-    vga_puts("  pctest     - Run producer-consumer semaphore test\n");
-
-    vga_puts_color("\n  Future Milestones:\n",
-                   VGA_LIGHT_CYAN, VGA_BLACK);
-
-    vga_puts("  kill    - [L09] Terminate a process\n");
-    vga_puts("  threads - [L10] List kernel threads\n");
-    vga_puts("  free    - [L11] Show free memory\n");
-    vga_puts("  ls      - [L12] List files\n");
-    vga_puts("  cat     - [L12] Print file contents\n\n");
+    vga_puts("  help          - Show this help message\n");
+    vga_puts("  clear         - Clear the screen\n");
+    vga_puts("  echo <text>   - Echo text to screen\n");
+    vga_puts("  version       - Show kernel version\n");
+    vga_puts("  colour f b    - Change colours (0-15)\n");
+    vga_puts("  halt          - Halt the CPU\n");
+    vga_puts("  about         - About this OS and course\n");
+    vga_puts("  mem           - Memory map (Stage 3 stub)\n");
+    vga_puts_color("\n  Stage 1 - Process Management:\n", VGA_LIGHT_CYAN, VGA_BLACK);
+    vga_puts("  ps            - List active processes\n");
+    vga_puts("  kill <pid>    - Terminate a process\n");
+    vga_puts("  ticks         - Show timer tick count\n");
+    vga_puts("  run           - Start round-robin process demo\n");
+    vga_puts_color("\n  Stage 2 - Threads & Synchronisation:\n", VGA_LIGHT_CYAN, VGA_BLACK);
+    vga_puts("  threadtest    - Run kernel thread test\n");
+    vga_puts("  racetest      - Race condition / mutex demo\n");
+    vga_puts("  pctest        - Producer-consumer semaphore demo\n\n");
 }
 
 static void cmd_clear(void) {
@@ -215,6 +205,33 @@ static void cmd_echo(const char *args) {
     vga_puts("  ");
     vga_puts(args);
     vga_puts("\n");
+}
+
+static void cmd_version(void) {
+    vga_puts_color("\n  SENG21213-OS Version 0.3 - Stage 2\n", VGA_LIGHT_CYAN, VGA_BLACK);
+    vga_puts("  Threads, mutexes and semaphores\n\n");
+}
+
+static void cmd_colour(const char *args) {
+    const char *p = k_ltrim(args);
+    uint32_t fg = 0, bg = 0;
+    if (*p < '0' || *p > '9') { vga_puts("  Usage: colour <fg> <bg>\n"); return; }
+    while (*p >= '0' && *p <= '9') { fg = fg * 10 + (uint32_t)(*p - '0'); p++; }
+    p = k_ltrim(p);
+    if (*p < '0' || *p > '9') { vga_puts("  Usage: colour <fg> <bg>\n"); return; }
+    while (*p >= '0' && *p <= '9') { bg = bg * 10 + (uint32_t)(*p - '0'); p++; }
+    p = k_ltrim(p);
+    if (*p != '\0' || fg > 15 || bg > 15) {
+        vga_puts("  Error: foreground and background must be 0-15.\n"); return;
+    }
+    vga_set_color((vga_color_t)fg, (vga_color_t)bg);
+    vga_puts("  Colour changed.\n");
+}
+
+static void cmd_halt(void) {
+    vga_puts("\n  System halted.\n");
+    __asm__ __volatile__("cli");
+    for (;;) __asm__ __volatile__("hlt");
 }
 
 static void cmd_mem(void) {
@@ -260,6 +277,17 @@ static void cmd_ps(void) {
     }
 
     vga_printf("\n  Total active processes: %u\n\n", count);
+}
+
+static void cmd_kill(const char *args) {
+    const char *p = k_ltrim(args);
+    uint32_t pid = 0;
+    if (*p < '0' || *p > '9') { vga_puts("  Usage: kill <pid>\n"); return; }
+    while (*p >= '0' && *p <= '9') { pid = pid * 10 + (uint32_t)(*p - '0'); p++; }
+    p = k_ltrim(p);
+    if (*p != '\0' || pid == 0) { vga_puts("  Usage: kill <pid>\n"); return; }
+    if (process_kill(pid)) vga_printf("  Process %u terminated.\n", pid);
+    else vga_printf("  Error: process %u not found or already terminated.\n", pid);
 }
 
 static void cmd_ticks(void) {
@@ -655,8 +683,10 @@ static void shell_run(void) {
         /* Dispatch */
         if (k_strcmp(cmd, "help")  == 0) { cmd_help();  continue; }
         if (k_strcmp(cmd, "clear") == 0) { cmd_clear(); continue; }
-        if (k_strcmp(cmd, "about") == 0) { cmd_about(); continue; }
-        if (k_strcmp(cmd, "mem")   == 0) { cmd_mem();   continue; }
+        if (k_strcmp(cmd, "about")   == 0) { cmd_about();   continue; }
+        if (k_strcmp(cmd, "mem")     == 0) { cmd_mem();     continue; }
+        if (k_strcmp(cmd, "version") == 0) { cmd_version(); continue; }
+        if (k_strcmp(cmd, "halt")    == 0) { cmd_halt();    continue; }
 	
 	if (k_strcmp(cmd, "ps") == 0) {
     	cmd_ps();
@@ -688,20 +718,16 @@ static void shell_run(void) {
 	continue;
 	}
 
-        if (k_strncmp(cmd, "echo ", 5) == 0) {
-            cmd_echo(k_ltrim(cmd + 5));
-            continue;
-        }
+        if (k_strcmp(cmd, "echo") == 0) { cmd_echo(""); continue; }
+        if (k_strncmp(cmd, "echo ", 5) == 0) { cmd_echo(k_ltrim(cmd + 5)); continue; }
+        if (k_strcmp(cmd, "colour") == 0) { cmd_colour(""); continue; }
+        if (k_strncmp(cmd, "colour ", 7) == 0) { cmd_colour(cmd + 7); continue; }
+        if (k_strcmp(cmd, "kill") == 0) { cmd_kill(""); continue; }
+        if (k_strncmp(cmd, "kill ", 5) == 0) { cmd_kill(cmd + 5); continue; }
 
-        /* Milestone stubs */
-        if (k_strcmp(cmd, "kill")    == 0 ||
-            k_strcmp(cmd, "threads") == 0 ||
-            k_strcmp(cmd, "free")    == 0 ||
-            k_strcmp(cmd, "ls")      == 0 ||
-            k_strcmp(cmd, "cat")     == 0) {
-            vga_puts_color("  [TODO] This command is not yet implemented.\n",
-                           VGA_YELLOW, VGA_BLACK);
-            vga_puts("  Implement it as part of your lecture assignment.\n");
+        if (k_strcmp(cmd, "free") == 0 || k_strcmp(cmd, "ls") == 0 ||
+            k_strcmp(cmd, "cat") == 0) {
+            vga_puts_color("  [TODO] This command belongs to a later stage.\n", VGA_YELLOW, VGA_BLACK);
             continue;
         }
 

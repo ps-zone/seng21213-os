@@ -72,7 +72,18 @@ void process_yield(void) {
 }
 
 void process_exit(void) {
-    /* Process termination will be added later */
+    /* A running process can be marked terminated by process_kill(). */
+}
+
+int process_kill(uint32_t pid) {
+    for (uint32_t i = 0; i < MAX_PROCESSES; i++) {
+        if (process_table[i].pid == pid &&
+            process_table[i].state != TERMINATED) {
+            process_table[i].state = TERMINATED;
+            return 1;
+        }
+    }
+    return 0;
 }
 
 pcb_t *process_get(uint32_t index) {

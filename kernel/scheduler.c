@@ -13,7 +13,7 @@ void scheduler_init(void) {
 }
 
 void scheduler_add_process(pcb_t *process) {
-    if (process == NULL) {
+    if (process == NULL || process->state == TERMINATED) {
         return;
     }
 
@@ -30,15 +30,21 @@ void scheduler_add_process(pcb_t *process) {
 }
 
 pcb_t *scheduler_next(void) {
-    if (ready_head == NULL) {
-        return NULL;
-    }
-
-    if (current_process != NULL &&
-        current_process->state == RUNNING) {
-
+    if (current_process != NULL && current_process->state == RUNNING) {
         current_process->state = READY;
         scheduler_add_process(current_process);
+    }
+
+    while (ready_head != NULL && ready_head->state == TERMINATED) {
+        pcb_t *terminated = ready_head;
+        ready_head = ready_head->next;
+        terminated->next = NULL;
+    }
+
+    if (ready_head == NULL) {
+        ready_tail = NULL;
+        current_process = NULL;
+        return NULL;
     }
 
     current_process = ready_head;
@@ -50,7 +56,6 @@ pcb_t *scheduler_next(void) {
 
     current_process->next = NULL;
     current_process->state = RUNNING;
-
     return current_process;
 }
 
@@ -63,32 +68,15 @@ void scheduler_tick(void) {
 }
 
 uint32_t scheduler_switch(uint32_t current_esp) {
-
-    /*
-     * Save the stack pointer of the process
-     * that was interrupted.
-     */
-    if (current_process != NULL) {
+    if (current_process != NULL && current_process->state != TERMINATED) {
         current_process->esp = current_esp;
     }
 
-    /*
-     * Select the next READY process.
-     */
     pcb_t *next = scheduler_next();
-
-    /*
-     * If there is no process available,
-     * continue using the current stack.
-     */
     if (next == NULL) {
         return current_esp;
     }
 
-    /*
-     * Assembly will load this ESP and
-     * restore the next process.
-     */
     return next->esp;
 }
 
