@@ -37,8 +37,8 @@ void fs_init(void);
  */
 int fs_open(const char *name);
 int fs_close(int fd);
-int fs_read_fd(int fd, char *buffer, uint32_t count);
-int fs_write_fd(int fd, const char *buffer, uint32_t count);
+int fs_read(int fd, char *buffer, uint32_t count);
+int fs_write(int fd, const char *buffer, uint32_t count);
 int fs_unlink(const char *name);
 
 /*
@@ -46,8 +46,8 @@ int fs_unlink(const char *name);
  */
 int fs_create(const char *name);
 int fs_delete(const char *name);
-int fs_write(const char *name, const char *data);
-int fs_read(const char *name, char *buffer, uint32_t buffer_size);
+int fs_write_file(const char *name, const char *data);
+int fs_read_file(const char *name, char *buffer, uint32_t buffer_size);
 
 /* Directory information used by ls. */
 uint32_t fs_file_count(void);

@@ -59,6 +59,19 @@ Stage 0 provides the basic environment required by the rest of the operating sys
 - PS/2 keyboard input
 - Interactive kernel shell
 
+### Stage 0 Shell Commands
+
+```text
+help
+clear
+echo <text>
+version
+colour <fg> <bg>
+halt
+```
+
+The `colour` command accepts VGA colour values from 0 to 15 for the foreground and background.
+
 ### Basic Boot Flow
 
 ```text
@@ -102,7 +115,6 @@ A **process** represents a task managed by the operating system. Information abo
 - Process scheduling
 - Context switching
 - Timer-based scheduling
-- Manual CPU yielding
 - Process information display
 
 ### Useful Commands
@@ -110,10 +122,9 @@ A **process** represents a task managed by the operating system. Information abo
 ```text
 ps
 run
-yield
 ```
 
-`ps` displays process information. `run` demonstrates process scheduling, and `yield` allows execution to be passed to another scheduled task.
+`ps` displays process information, and `run` demonstrates process scheduling.
 
 ---
 
@@ -173,7 +184,7 @@ Physical memory is divided into **4 KB frames**. The kernel tracks which frames 
 - Physical frame deallocation
 - Memory information
 - Allocation/deallocation testing
-- Reserved memory region for the Stage 4 RAM disk
+- Protection of kernel and BSS memory from physical frame allocation
 
 ### Memory Information
 
@@ -269,9 +280,11 @@ Deletes the file.
 | `clear` | Clear the screen |
 | `about` | Display operating-system information |
 | `echo` | Print text |
+| `version` | Display the operating-system version |
+| `colour <fg> <bg>` | Change VGA foreground and background colours (0–15) |
+| `halt` | Halt the system |
 | `ps` | Display process information |
 | `run` | Run the process scheduling demonstration |
-| `yield` | Yield CPU execution |
 | `threadtest` | Test thread scheduling |
 | `racetest` | Demonstrate a race condition and mutex protection |
 | `pctest` | Run the producer-consumer semaphore test |
@@ -314,7 +327,6 @@ seng21213-os/
 │   └── types.h
 ├── linker.ld
 ├── Makefile
-├── Dockerfile
 ├── .gitignore
 └── README.md
 ```
@@ -470,7 +482,7 @@ This simple test checks file creation, listing, writing, appending, reading, and
 
 | Area | Test Commands | Purpose |
 |---|---|---|
-| Processes | `ps`, `run`, `yield` | Process information and scheduling |
+| Processes | `ps`, `run` | Process information and scheduling |
 | Threads | `threadtest` | Thread scheduling |
 | Synchronisation | `racetest` | Race condition and mutex protection |
 | Semaphores | `pctest` | Producer-consumer synchronisation |

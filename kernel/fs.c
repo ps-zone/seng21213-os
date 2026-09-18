@@ -472,7 +472,7 @@ int fs_close(int fd) {
  * Descriptor-based read
  * ========================================================= */
 
-int fs_read_fd(int fd,
+int fs_read(int fd,
                char *buffer,
                uint32_t count) {
     if (fd < 0 ||
@@ -541,7 +541,7 @@ int fs_read_fd(int fd,
  * Writes at the current file position.
  * ========================================================= */
 
-int fs_write_fd(int fd,
+int fs_write(int fd,
                 const char *buffer,
                 uint32_t count) {
     if (fd < 0 ||
@@ -728,7 +728,7 @@ int fs_delete(const char *name) {
  * The shell command appends text to the file.
  * ========================================================= */
 
-int fs_write(const char *name, const char *data) {
+int fs_write_file(const char *name, const char *data) {
     if (name == 0 || data == 0) {
         return -1;
     }
@@ -754,7 +754,7 @@ int fs_write(const char *name, const char *data) {
     open_files[fd].position = inode->size;
 
     int result =
-        fs_write_fd(fd, data, fs_strlen(data));
+        fs_write(fd, data, fs_strlen(data));
 
     fs_close(fd);
 
@@ -770,7 +770,7 @@ int fs_write(const char *name, const char *data) {
  * Shell-friendly read
  * ========================================================= */
 
-int fs_read(const char *name,
+int fs_read_file(const char *name,
             char *buffer,
             uint32_t buffer_size) {
     if (name == 0 ||
@@ -786,7 +786,7 @@ int fs_read(const char *name,
     }
 
     int result =
-        fs_read_fd(fd,
+        fs_read(fd,
                    buffer,
                    buffer_size - 1);
 

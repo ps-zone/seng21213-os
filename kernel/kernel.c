@@ -68,6 +68,11 @@ static void cmd_clear(void);
 static void cmd_about(void);
 static void cmd_echo(const char *args);
 static void cmd_mem(void);
+
+static void cmd_version(void);
+static void cmd_colour(const char *args);
+static void cmd_halt(void);
+
 static void cmd_ps(void);
 static void cmd_ticks(void);
 static void cmd_run(void);
@@ -179,8 +184,11 @@ static void cmd_help(void) {
 
     vga_puts("  help    - Show this help message\n");
     vga_puts("  clear   - Clear the screen\n");
-    vga_puts("  about   - About this OS and course\n");
     vga_puts("  echo    - Echo text to screen\n");
+    vga_puts("  version - Show OS version\n");
+    vga_puts("  colour  - Change colours: colour <fg> <bg>\n");
+    vga_puts("  halt    - Halt the system\n");
+    vga_puts("  about   - About this OS and course\n");
     vga_puts("  mem     - Memory map (stub)\n");
 
 
@@ -202,14 +210,14 @@ static void cmd_help(void) {
 
 
     vga_puts_color("\n  Memory Management:\n",
-		   VGA_LIGHT_CYAN, VGA_BLACK);
+           VGA_LIGHT_CYAN, VGA_BLACK);
 
     vga_puts("  meminfo - Show physical memory information\n");
     vga_puts("  memtest   - Test 100 frame allocations and frees\n");
 
 
     vga_puts_color("\n  File System:\n",
-		   VGA_LIGHT_CYAN, VGA_BLACK);
+           VGA_LIGHT_CYAN, VGA_BLACK);
 
     vga_puts("  ls      - List files\n");
     vga_puts("  touch   - Create an empty file\n");
@@ -218,10 +226,6 @@ static void cmd_help(void) {
     vga_puts("  rm      - Delete a file\n");
 
 
-    vga_puts_color("\n  Future Milestones:\n",
-                   VGA_LIGHT_CYAN, VGA_BLACK);
-
-    vga_puts("  threads - [L10] List kernel threads\n");
 }
 
 static void cmd_clear(void) {
@@ -243,6 +247,62 @@ static void cmd_echo(const char *args) {
     vga_puts("  ");
     vga_puts(args);
     vga_puts("\n");
+}
+
+static void cmd_version(void) {
+    vga_puts_color("\n  SENG21213-OS Version 0.5\n",
+                   VGA_LIGHT_CYAN, VGA_BLACK);
+    vga_puts("  Educational 32-bit x86 operating system\n\n");
+}
+
+static void cmd_colour(const char *args) {
+    const char *p = k_ltrim(args);
+
+    if (*p < '0' || *p > '9') {
+        vga_puts("  Usage: colour <fg> <bg>\n");
+        vga_puts("  Colours: 0-15\n");
+        return;
+    }
+
+    uint32_t fg = 0;
+    while (*p >= '0' && *p <= '9') {
+        fg = fg * 10 + (uint32_t)(*p - '0');
+        p++;
+    }
+
+    p = k_ltrim(p);
+
+    if (*p < '0' || *p > '9') {
+        vga_puts("  Usage: colour <fg> <bg>\n");
+        vga_puts("  Colours: 0-15\n");
+        return;
+    }
+
+    uint32_t bg = 0;
+    while (*p >= '0' && *p <= '9') {
+        bg = bg * 10 + (uint32_t)(*p - '0');
+        p++;
+    }
+
+    p = k_ltrim(p);
+
+    if (*p != '\0' || fg > 15 || bg > 15) {
+        vga_puts("  Error: foreground and background must be 0-15.\n");
+        return;
+    }
+
+    vga_set_color((vga_color_t)fg, (vga_color_t)bg);
+    vga_puts("  Colour changed.\n");
+}
+
+static void cmd_halt(void) {
+    vga_puts("\n  System halted.\n");
+
+    __asm__ volatile ("cli");
+
+    for (;;) {
+        __asm__ volatile ("hlt");
+    }
 }
 
 static void cmd_mem(void) {
@@ -844,7 +904,7 @@ static void cmd_write(const char *args) {
         return;
     }
 
-    if (fs_write(filename, text) == 0) {
+    if (fs_write_file(filename, text) == 0) {
         vga_puts("  File written successfully.\n");
     } else {
         vga_puts_color(
@@ -874,7 +934,7 @@ static void cmd_cat(const char *name) {
     char buffer[256];
 
     int bytes_read =
-        fs_read(name, buffer, sizeof(buffer));
+        fs_read_file(name, buffer, sizeof(buffer));
 
     if (bytes_read < 0) {
         vga_puts_color(
@@ -933,80 +993,92 @@ static void shell_run(void) {
         if (k_strlen(cmd) == 0) continue;
 
         /* Dispatch */
-        if (k_strcmp(cmd, "help")  == 0) { cmd_help();  continue; }
-        if (k_strcmp(cmd, "clear") == 0) { cmd_clear(); continue; }
-        if (k_strcmp(cmd, "about") == 0) { cmd_about(); continue; }
-        if (k_strcmp(cmd, "mem")   == 0) { cmd_mem();   continue; }
+        if (k_strcmp(cmd, "help")    == 0) { cmd_help();    continue; }
+    if (k_strcmp(cmd, "clear")   == 0) { cmd_clear();   continue; }
+    if (k_strcmp(cmd, "version") == 0) { cmd_version(); continue; }
+    if (k_strcmp(cmd, "halt")    == 0) { cmd_halt();    continue; }
+    if (k_strcmp(cmd, "about")   == 0) { cmd_about();   continue; }
+    if (k_strcmp(cmd, "mem")     == 0) { cmd_mem();     continue; }
 
-	if (k_strcmp(cmd, "ps") == 0) {
-    	cmd_ps();
-    	continue;
-	}
+    if (k_strncmp(cmd, "colour ", 7) == 0) {
+        cmd_colour(k_ltrim(cmd + 7));
+        continue;
+    }
 
-	if (k_strcmp(cmd, "ticks") == 0) {
-	cmd_ticks();
-	continue;
-	}
+    if (k_strcmp(cmd, "colour") == 0) {
+        vga_puts("  Usage: colour <fg> <bg>\n");
+        continue;
+    }
 
-	if (k_strcmp(cmd, "run") == 0) {
-	cmd_run();
-	continue;
-	}
+    if (k_strcmp(cmd, "ps") == 0) {
+        cmd_ps();
+        continue;
+    }
 
-	if (k_strcmp(cmd, "threadtest") == 0) {
-	cmd_threadtest();
-	continue;
-	}
+    if (k_strcmp(cmd, "ticks") == 0) {
+    cmd_ticks();
+    continue;
+    }
 
-	if (k_strcmp(cmd, "racetest") == 0) {
-	cmd_racetest();
-	continue;
-	}
+    if (k_strcmp(cmd, "run") == 0) {
+    cmd_run();
+    continue;
+    }
 
-	if (k_strcmp(cmd, "pctest") == 0) {
-	cmd_pctest();
-	continue;
-	}
+    if (k_strcmp(cmd, "threadtest") == 0) {
+    cmd_threadtest();
+    continue;
+    }
 
-	if (k_strcmp(cmd, "meminfo") == 0) {
-    	cmd_meminfo();
-    	continue;
-	}
+    if (k_strcmp(cmd, "racetest") == 0) {
+    cmd_racetest();
+    continue;
+    }
 
-	if (k_strcmp(cmd, "memtest") == 0) {
-    	cmd_memtest();
-    	continue;
-	}
+    if (k_strcmp(cmd, "pctest") == 0) {
+    cmd_pctest();
+    continue;
+    }
+
+    if (k_strcmp(cmd, "meminfo") == 0) {
+        cmd_meminfo();
+        continue;
+    }
+
+    if (k_strcmp(cmd, "memtest") == 0) {
+        cmd_memtest();
+        continue;
+    }
 
         if (k_strncmp(cmd, "echo ", 5) == 0) {
             cmd_echo(k_ltrim(cmd + 5));
             continue;
         }
 
-	if (k_strncmp(cmd, "touch ", 6) == 0) {
-    	cmd_touch(k_ltrim(cmd + 6));
-    	continue;
-	}
+    if (k_strncmp(cmd, "touch ", 6) == 0) {
+        cmd_touch(k_ltrim(cmd + 6));
+        continue;
+    }
 
-	if (k_strcmp(cmd, "ls") == 0) {
-    	cmd_ls();
-    	continue;
-	}
+    if (k_strcmp(cmd, "ls") == 0) {
+        cmd_ls();
+        continue;
+    }
 
-	if (k_strncmp(cmd, "write ", 6) == 0) {
-    	cmd_write(k_ltrim(cmd + 6));
-    	continue;
-	}
+    if (k_strncmp(cmd, "write ", 6) == 0) {
+        cmd_write(k_ltrim(cmd + 6));
+        continue;
+    }
 
-	if (k_strncmp(cmd, "cat ", 4) == 0) {
-    	cmd_cat(k_ltrim(cmd + 4));
-    	continue;
-	}
+    if (k_strncmp(cmd, "cat ", 4) == 0) {
+        cmd_cat(k_ltrim(cmd + 4));
+        continue;
+    }
 
-	if (k_strncmp(cmd, "rm ", 3) == 0) {
-    	cmd_rm(k_ltrim(cmd + 3));
-    	continue;
-	}
+    if (k_strncmp(cmd, "rm ", 3) == 0) {
+        cmd_rm(k_ltrim(cmd + 3));
+        continue;
+    }
 
 
     /* Stage 1: terminate a process by PID */
